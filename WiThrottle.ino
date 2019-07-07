@@ -45,6 +45,12 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiClient.h>
+#include <WiFiManager.h>
+
+// for debug
+#include <PubSubClient.h>
+WiFiClient mqttClient;
+PubSubClient mqtt("broker.hivemq.com", 1883, mqttClient);
 
 #include "Config.h"
 #define maxCommandLength 30
@@ -78,16 +84,33 @@ char msg[16];
 WiFiServer server(WTServer_Port);
 WiFiClient client[maxClient];
 
-void setup() {
-  delay(1500);
-  Serial.begin(115200);
-  Serial.flush();
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.softAPConfig(WTServer_Ip, WTServer_Ip, WTServer_NMask);
-  WiFi.softAP(ssid, password);
+#define DEBUGS(v) {Serial.println(v);}
+//void DEBUGS(String v) {mqtt.publish("dccpp/log", v.c_str() );}
 
-  MDNS.begin(hostString);
+void setup() {
+  Serial.begin(115200);
+  delay(100);
+  Serial.println("Started");
+
+  //Serial1.begin(115200);  
+
+  WiFiManager wifiManager;
+  //wifiManager.setConnectTimeout(60); // 1 min
+  wifiManager.setConfigPortalTimeout(300); // 5 min
+  if (!wifiManager.autoConnect(hostString) ) {
+    delay(1000);
+    ESP.restart();
+  }
+  
+  mqtt.connect(hostString);
+
+  DEBUGS("Connected");
+
+  // wait for DCC++
+  delay(1500);
+
   server.begin();
+  MDNS.begin(hostString);
   MDNS.addService("withrottle","tcp", WTServer_Port);
   if (PowerOnStart == 1)
     turnPower('1');
@@ -96,6 +119,7 @@ void setup() {
 }
 
 void loop() {
+  mqtt.loop();
   for(int i=0; i<maxClient; i++) {
     WiFiClient& cli = client[i];
     if (!cli) {
@@ -191,7 +215,7 @@ int invert(int value) {
 void drain() {
   String v = "";
   while(Serial.available()>0) v += (char)Serial.read();
-
+  DEBUGS("<< "+v);
 }
 
 void waitForDCCpp() {
@@ -200,6 +224,7 @@ void waitForDCCpp() {
 
 void sendDCCpp(String v) {
 	Serial.println(v);
+	DEBUGS(">> "+v);
 }
 
 void sendDCCppCmd(String v) {
@@ -228,6 +253,7 @@ String loadResponse() {
     else if(strlen(commandString)<maxCommandLength)
       sprintf(commandString,"%s%c",commandString,c);
   }
+  DEBUGS("<< "+String(commandString) );
 }
 
 void loadTurnouts() {
