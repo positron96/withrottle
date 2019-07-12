@@ -7,7 +7,7 @@
 #include <ESP8266WiFi.h>
 
 /* Maximum WiFi clients that can be connected to WiThrottle */
-#define maxClient 3
+#define MAX_CLIENTS 3
 
 /* Network parameters */
 int WTServer_Port = 44444;
@@ -15,5 +15,5 @@ char hostString[] = "ESPWTServer";
 
 /* Power state on start 0=OFF, 1=ON. 
    WARNING!!! If you use iOS WiThrottle.app this must set only ON*/
-boolean PowerOnStart = 1;
+bool POWER_ON_START = 1;
 
