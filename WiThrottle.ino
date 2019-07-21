@@ -82,11 +82,11 @@ WiFiClient client[MAX_CLIENTS];
 WiFiServer dccppServer(DCCppServer_Port);
 WiFiClient dccppClient;
 
-#define DEBUGS(v) {Serial.println(v);}
-//void DEBUGS(String v) {mqtt.publish("dccpp/log", v.c_str() );}
+//#define DEBUGS(v) {Serial.println(v);}
+void DEBUGS(String v) {mqtt.publish("dccpp/log", v.c_str() );}
 
-#define LOG_WIFI 1
-#define LOG_DCC 1
+#define LOG_WIFI 0
+#define LOG_DCC 0
 
 void setup() {
   Serial.begin(115200);
@@ -111,6 +111,8 @@ void setup() {
   dccppServer.begin();
   MDNS.begin(hostString);
   MDNS.addService("withrottle","tcp", WTServer_Port);
+  MDNS.addService("http","tcp", DCCppServer_Port);
+  MDNS.setInstanceName("DCC++ Network Interface");
 
   while(Serial.available()>0) Serial.read();
   char powerCmd = POWER_ON_START == 1 ? '1' : '0';
@@ -373,10 +375,11 @@ void locoRelease(char th, String locoAddr, int iThrottle, int iClient) {
   String locoAddress = locoAddesses[iThrottle].substring(1);
   heartbeat[iThrottle] =0;
   locoAddesses[iThrottle] = "";
-  sendDCCppCmd(String("t ")+String(iThrottle+1)+" "+locoAddress+" 0 "+String(locoStates[iThrottle][30]));
-  String response = loadResponse();
   wifiPrintln(iClient, String("M")+th+"-"+locoAddr+"<;>");
   DEBUGS("loco release thr="+String(iThrottle)+"; addr"+String(locoAddr) );
+  // stop now
+  sendDCCppCmd(String("t ")+String(iThrottle+1)+" "+locoAddress+" 0 "+String(locoStates[iThrottle][30]));
+  String response = loadResponse();
 }
 
 void locoAction(char th, String locoAddr, String actionVal, int iThrottle, int i){
