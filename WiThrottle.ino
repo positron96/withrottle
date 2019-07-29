@@ -298,6 +298,7 @@ void loadTurnouts() {
   {
     char data[maxCommandLength];
     sprintf(data, "%s", readResponse().c_str() );
+    if(strlen(data)==0) break;
       String s;
       char *str = data;
       char *pch;
@@ -338,9 +339,9 @@ void throttleStart(int iClient) {
   wifiPrintln(iClient, "RL0");
   wifiPrintln(iClient, "PPA"+powerStatus);
   wifiPrintln(iClient, "PTT]\\[Turnouts}|{Turnout]\\[Closed}|{2]\\[Thrown}|{4");
-  wifiPrintln(iClient, "PTL");
+  wifiPrint(iClient, "PTL");
   for (int t = 0 ; turnoutData[t].address != 0; t++) {
-    wifiPrintln(iClient, "]\\[LT"+String(turnoutData[t].address)+"}|{"+turnoutData[t].id+"}|{"+turnoutData[t].tStatus);
+    wifiPrint(iClient, "]\\[LT"+String(turnoutData[t].address)+"}|{"+turnoutData[t].id+"}|{"+turnoutData[t].tStatus);
   }
   wifiPrintln(iClient, "");
   wifiPrintln(iClient, "*"+String(heartbeatTimeout));
