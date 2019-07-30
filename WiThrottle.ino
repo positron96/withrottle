@@ -55,6 +55,11 @@ PubSubClient mqtt("broker.hivemq.com", 1883, mqttClient);
 #include "Config.h"
 #define maxCommandLength 30
 
+#define TURNOUT_PREF "LT"
+#define TURNOUT_CLOSED 2
+#define TURNOUT_THROWN 4
+
+
 /* Define turnout object structures */
 typedef struct {
 	unsigned short address;	
@@ -164,11 +169,21 @@ void loop() {
 					turnPower(clientData.charAt(3));
 					//notifyPowerChange();
 				}
-        else if (clientData.startsWith("PTA")){
-          String aStatus = clientData.substring(3,4);
-          int aAddr = clientData.substring(6).toInt();
-          accessoryToggle(aAddr, aStatus);
-        }
+				else if (clientData.startsWith("PTA")) {
+					char aStatus = clientData.charAt(3);
+          int aAddr;
+          bool named;
+          if(clientData.substring(4,6)==TURNOUT_PREF) {
+            // named turnout
+            aAddr = clientData.substring(6).toInt();
+            named = true;
+          } else {
+            aAddr = clientData.substring(4).toInt();
+            named = false;
+          }
+          accessoryToggle(aAddr, aStatus, named);
+					
+				}
 				else if (clientData.startsWith("N") 
 					  || clientData.startsWith("*")) {
 					wifiPrintln(iClient, "*" + String(heartbeatTimeout));
@@ -195,26 +210,11 @@ void loop() {
 						locoRelease(th, actionKey, iThrottle, iClient);
 					}
 					else if (action == 'A') {
-            /*if(actionVal.startsWith("V")) { // velocity
-              changeSpeed[iThrottle] = true;
-              locoStates[iThrottle][29] = actionVal.substring(1).toInt();
-            }
-            else*/ {
 						locoAction(th, actionKey, actionVal, iThrottle, iClient);
 					}
-          }
 					heartbeat[iThrottle] = millis();
 				}
 			}
-      /*for(int iThrottle=0+iClient*2; iThrottle<2+iClient*2; iThrottle++){
-        if(changeSpeed[iThrottle] && locoAddesses[iThrottle]!=""){
-          String locoAddress = locoAddesses[iThrottle].substring(1);
-          sendDCCppCmd("t "+String(iThrottle+1)+" "+ locoAddress
-              +" " + String(locoStates[iThrottle][29])
-              +" " + String(locoStates[iThrottle][30])  );
-          String response = loadResponse();
-        }
-      } */
 			if (heartbeatEnable[iClient]) {
 				checkHeartbeat(iClient);
 			}
@@ -294,29 +294,13 @@ void loadTurnouts() {
 	sendDCCppCmd("T");
 	waitForDCCpp();
 	int t = 0;
-  while(Serial.available()>0)
-  {
-    char data[maxCommandLength];
-    sprintf(data, "%s", readResponse().c_str() );
-    if(strlen(data)==0) break;
-      String s;
-      char *str = data;
-      char *pch;
-      pch = strtok(str, " ");
-      s = (char*)pch;
-      int id = s.substring(1).toInt();
-      pch = strtok (NULL, " ");
-      s = (char*)pch;
-      int x = s.toInt();
-      pch = strtok (NULL, " ");
-      s = (char*)pch;
-      int y = s.toInt();
-      pch = strtok (NULL, " ");
-      s = (char*)pch;
-      int z=2;
-      if(s=="1") z=4;
-      int a = (x-1)*4+y+1;
-      turnoutData[t]={a,id,z};
+	while(Serial.available()>0) {
+		char data[maxCommandLength];
+		sprintf(data, "%s", readResponse().c_str() );
+		if (strlen(data)==0) break;
+		int addr, sub, stat, id;
+		int ret = sscanf(data, "%*c %d %d %d %d", &id, &addr, &sub, &stat );
+		turnoutData[t] = { ((addr-1)*4+1) + (sub&0x3) , id, stat==0 ? 2 : 4};
 		t++;
 	}
 }
@@ -341,8 +325,8 @@ void throttleStart(int iClient) {
 	wifiPrintln(iClient, "PTT]\\[Turnouts}|{Turnout]\\[Closed}|{"+String(TURNOUT_CLOSED)+"]\\[Thrown}|{"+String(TURNOUT_THROWN) );
 	wifiPrint(iClient, "PTL");
 	for (int t = 0 ; turnoutData[t].address != 0; t++) {
-    wifiPrint(iClient, "]\\[LT"+String(turnoutData[t].address)+"}|{"+turnoutData[t].id+"}|{"+turnoutData[t].tStatus);
-  }
+		wifiPrint(iClient, String("]\\[")+TURNOUT_PREF+turnoutData[t].address+"}|{"+turnoutData[t].id+"}|{"+turnoutData[t].tStatus);
+	}
 	wifiPrintln(iClient, "");
 	wifiPrintln(iClient, "*"+String(heartbeatTimeout));
 	alreadyConnected[iClient] = true;
@@ -520,41 +504,43 @@ void checkHeartbeat(int iClient) {
 	}
 }
 
-void accessoryToggle(int aAddr, String aStatus){
-  int newStat;
-  if(aStatus=="T") 
-    newStat=1;
-  else if(aStatus=="C")
-    newStat=0;
-  else
-    newStat=-1;
-  int t=0;
-  for (t = 0 ; turnoutData[t].address!=0 && turnoutData[t].address!=aAddr; t++);
-  if(turnoutData[t].address==0 && newStat>-1){
-    int addr=((aAddr-1)/4)+1;
-    int sub=aAddr-addr*4+3;
-    for(int i=0; i<MAX_CLIENTS; i++){
-      wifiPrintln(i, "PTA2LT"+String(aAddr));
-    }
-    sendDCCppCmd("a "+String(addr)+" "+String(sub)+" "+String(newStat));
+void accessoryToggle(int aAddr, char aStatus, bool namedTurnout) {
+	int newStat = -1;
+	switch(aStatus) {
+		case 'T': newStat=1; break;
+		case 'C': newStat=0; break;
+	}
+
+  DEBUGS(String("turnout, addr= ")+aAddr );
+
+  int wStat = 3; // unknown
+  if(namedTurnout) {
+	  int t=0;
+	  for (t = 0 ; turnoutData[t].address!=0 && turnoutData[t].address!=aAddr; t++);
+
+  	if (turnoutData[t].address!=0)  {
+  		// turnout command
+  		if (newStat==-1) newStat = turnoutData[t].tStatus==TURNOUT_CLOSED ? 1 : 0;
+  		
+  		sendDCCppCmd("T "+String(turnoutData[t].id)+" "+newStat);		
+  		String response = loadResponse();
+  		sscanf(response.c_str(), "%*c %*d %d", &newStat);
+  		//DEBUGS(String("parsed new status "+newStat) );
+  		wStat = newStat==0 ? TURNOUT_CLOSED : TURNOUT_THROWN;
+      turnoutData[t].tStatus = wStat;
+  	}  
+  } else {
+    if(newStat==-1) newStat=1;
+    // accessory command    
+    int addr = ((aAddr-1) >> 2) + 1; 
+    int sub  = (aAddr-1) & 0x3; 
+    sendDCCppCmd("a "+String(addr)+" "+sub+" "+newStat);
+    wStat = newStat==0 ? TURNOUT_CLOSED : TURNOUT_THROWN;
+	}
+
+  for (int i=0; i<MAX_CLIENTS; i++) {
+      if(client[i])
+        wifiPrintln(i, String("PTA")+wStat+(namedTurnout?TURNOUT_PREF:"")+aAddr);
   }
-  else {
-    if(newStat==-1){
-      switch(turnoutData[t].tStatus){
-        case 2:  turnoutData[t].tStatus=4;  newStat=0;  break;
-        case 4:  turnoutData[t].tStatus=2;  newStat=1;  break;
-      }
-    }
-    else {
-      switch(newStat){
-        case 0:  turnoutData[t].tStatus=2;  break;
-        case 1:  turnoutData[t].tStatus=4;  break;
-      }
-    }
-    for(int i=0; i<MAX_CLIENTS; i++){
-      wifiPrintln(i, "PTA"+String(turnoutData[t].tStatus)+"LT"+String(turnoutData[t].address));
-    }
-    sendDCCppCmd("T "+String(turnoutData[t].id)+" "+String(newStat));
-    String response = loadResponse();
-  }
+
 }
