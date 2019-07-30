@@ -5,9 +5,9 @@
  * 
  * Change log:
  * 2017-09-10 - Fixed release responce for WiThrottle.app
- *              Fixed synchronize power status on clients
+ *							Fixed synchronize power status on clients
  * 2017-09-24 - Added mDNS responder
- *              Added start delay to fix connection problem with DCC++
+ *							Added start delay to fix connection problem with DCC++
  * 2018-12-11 - Fixed Engine Driver v2.19+ throttle numbers 
  * 
  * DCC++ https://github.com/DccPlusPlus
@@ -23,11 +23,11 @@
  * are permitted provided that the following conditions are met:
  * 
  * * Redistributions of source code must retain the above copyright notice, this
- *   list of conditions and the following disclaimer.
+ *	 list of conditions and the following disclaimer.
  * 
  * * Redistributions in binary form must reproduce the above copyright notice, this
- *   list of conditions and the following disclaimer in the documentation and/or
- *   other materials provided with the distribution.
+ *	 list of conditions and the following disclaimer in the documentation and/or
+ *	 other materials provided with the distribution.
  * 
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
@@ -57,18 +57,18 @@ PubSubClient mqtt("broker.hivemq.com", 1883, mqttClient);
 
 /* Define turnout object structures */
 typedef struct {
-  int address;  
-  int id;
-  int tStatus;
+	unsigned short address;	
+	unsigned int id;
+	byte tStatus;
 } tData;
 tData turnoutData[100];
 
 /* The interval of check connections between ESP & WiThrottle app */
-const int heartbeatTimeout = 10;
+const unsigned int heartbeatTimeout = 10;
 bool heartbeatEnable[MAX_CLIENTS];
 unsigned long heartbeat[MAX_CLIENTS*2];
 
-String locoAddesses[] = {"", "", "", "", "", ""};
+String locoAddesses[MAX_CLIENTS*2] = {""};
 int locoStates[MAX_CLIENTS*2][31];
 
 String powerStatus;
@@ -89,123 +89,123 @@ void DEBUGS(String v) {mqtt.publish("dccpp/log", v.c_str() );}
 #define LOG_DCC 0
 
 void setup() {
-  Serial.begin(115200);
-  delay(100);
-  Serial.println("Started");
+	Serial.begin(115200);
+	delay(100);
+	Serial.println("Started");
 
-  //Serial1.begin(115200);  
+	//Serial1.begin(115200);	
 
-  WiFiManager wifiManager;
-  //wifiManager.setConnectTimeout(60); // 1 min
-  wifiManager.setConfigPortalTimeout(300); // 5 min
-  if (!wifiManager.autoConnect(hostString) ) {
-    delay(1000);
-    ESP.restart();
-  }
-  
-  mqtt.connect(hostString);
+	WiFiManager wifiManager;
+	//wifiManager.setConnectTimeout(60); // 1 min
+	wifiManager.setConfigPortalTimeout(300); // 5 min
+	if (!wifiManager.autoConnect(hostString) ) {
+		delay(1000);
+		ESP.restart();
+	}
+	
+	mqtt.connect(hostString);
 
-  DEBUGS("Connected");
+	DEBUGS("Connected");
 
-  server.begin();
-  dccppServer.begin();
-  MDNS.begin(hostString);
-  MDNS.addService("withrottle","tcp", WTServer_Port);
-  MDNS.addService("http","tcp", DCCppServer_Port);
-  MDNS.setInstanceName("DCC++ Network Interface");
+	server.begin();
+	dccppServer.begin();
+	MDNS.begin(hostString);
+	MDNS.addService("withrottle","tcp", WTServer_Port);
+	MDNS.addService("http","tcp", DCCppServer_Port);
+	MDNS.setInstanceName("DCC++ Network Interface");
 
-  while(Serial.available()>0) Serial.read();
-  char powerCmd = POWER_ON_START == 1 ? '1' : '0';
-  while(Serial.available()==0) { turnPower(powerCmd); delay(25); }
-  processDCCppResponse(readResponse()); // this should be <p1> or <p0>
+	while(Serial.available()>0) Serial.read();
+	char powerCmd = POWER_ON_START == 1 ? '1' : '0';
+	while(Serial.available()==0) { turnPower(powerCmd); delay(250); }
+	processDCCppResponse(readResponse()); // this should be <p1> or <p0>
 }
 
 
 void loop() {
-  
-  mqtt.loop();
+	
+	mqtt.loop();
  
-  if(Serial.available()>0) {
-    String v = readResponse();
-    if (v!="") processDCCppResponse(v);
-  }
+	if (Serial.available()>0) {
+		String v = readResponse();
+		if (v!="") processDCCppResponse(v);
+	}
 
-  if(!dccppClient) dccppClient = dccppServer.available();
-  if(dccppClient) {
-    while(dccppClient.available()>0) {
-      Serial.write(dccppClient.read());
-    }
-  }
+	if (!dccppClient) dccppClient = dccppServer.available();
+	if (dccppClient) {
+		while(dccppClient.available()>0) {
+			Serial.write(dccppClient.read());
+		}
+	}
 
-  
-  for(int iClient=0; iClient<MAX_CLIENTS; iClient++) {
-    WiFiClient& cli = client[iClient];
-    if (!cli) {
-      cli = server.available();
-    }
-    else {
-      if (cli.status() == CLOSED) {
-        throttleStop(iClient);
-      }
-      else if(!alreadyConnected[iClient]) {
-        loadTurnouts();
-        throttleStart(iClient);
-      }
-    }
-    if (cli.available()) {
-      //bool changeSpeed[] = { };
-      while(cli.available()>0) { 
-        String clientData = cli.readStringUntil('\n'); 
-        if(LOG_WIFI) DEBUGS("WF>> "+clientData);
-        if (clientData.startsWith("*+")) {
-          heartbeatEnable[iClient] = true;
-        }
-        else if (clientData.startsWith("PPA")){
-          turnPower(clientData.charAt(3));
-          //notifyPowerChange();
-        }
+	
+	for (int iClient=0; iClient<MAX_CLIENTS; iClient++) {
+		WiFiClient& cli = client[iClient];
+		if (!cli) {
+			cli = server.available();
+		}
+		else {
+			if (cli.status() == CLOSED) {
+				throttleStop(iClient);
+			}
+			else if (!alreadyConnected[iClient]) {
+				loadTurnouts();
+				throttleStart(iClient);
+			}
+		}
+		if (cli.available()) {
+			//bool changeSpeed[] = { };
+			while(cli.available()>0) { 
+				String clientData = cli.readStringUntil('\n'); 
+				if (LOG_WIFI) DEBUGS("WF>> "+clientData);
+				if (clientData.startsWith("*+")) {
+					heartbeatEnable[iClient] = true;
+				}
+				else if (clientData.startsWith("PPA")) {
+					turnPower(clientData.charAt(3));
+					//notifyPowerChange();
+				}
         else if (clientData.startsWith("PTA")){
           String aStatus = clientData.substring(3,4);
           int aAddr = clientData.substring(6).toInt();
           accessoryToggle(aAddr, aStatus);
         }
-        else if (clientData.startsWith("N") 
-              || clientData.startsWith("*")){
-          wifiPrintln(iClient, "*" + String(heartbeatTimeout));
-        }
-        else if (clientData.startsWith("MT") 
-              || clientData.startsWith("MS") 
-              || clientData.startsWith("M0") 
-              || clientData.startsWith("M1")) {
-          char th = clientData.charAt(1);
-          int iThrottle;
-          if (th == 'T' || th == '0')
-            iThrottle = 0+iClient*2;
-          else
-            iThrottle = 1+iClient*2;
-          char action = clientData.charAt(2);
-          String actionData = clientData.substring(3);
-          int delimiter = actionData.indexOf(";");
-          String actionKey = actionData.substring(0, delimiter-1);
-          String actionVal = actionData.substring(delimiter+2);
-          if (action == '+') {
-            locoAdd(th, actionKey, iThrottle, iClient);
-          }
-          else if (action == '-') {
-            locoRelease(th, actionKey, iThrottle, iClient);
-          }
-          else if (action == 'A') {
+				else if (clientData.startsWith("N") 
+					  || clientData.startsWith("*")) {
+					wifiPrintln(iClient, "*" + String(heartbeatTimeout));
+				}
+				else if (clientData.startsWith("MT") 
+					  || clientData.startsWith("MS") 
+					  || clientData.startsWith("M0") 
+					  || clientData.startsWith("M1")) {
+					char th = clientData.charAt(1);
+					int iThrottle;
+					if (th == 'T' || th == '0')
+						iThrottle = 0+iClient*2;
+					else
+						iThrottle = 1+iClient*2;
+					char action = clientData.charAt(2);
+					String actionData = clientData.substring(3);
+					int delimiter = actionData.indexOf(";");
+					String actionKey = actionData.substring(0, delimiter-1);
+					String actionVal = actionData.substring(delimiter+2);
+					if (action == '+') {
+						locoAdd(th, actionKey, iThrottle, iClient);
+					}
+					else if (action == '-') {
+						locoRelease(th, actionKey, iThrottle, iClient);
+					}
+					else if (action == 'A') {
             /*if(actionVal.startsWith("V")) { // velocity
               changeSpeed[iThrottle] = true;
               locoStates[iThrottle][29] = actionVal.substring(1).toInt();
             }
             else*/ {
-              locoAction(th, actionKey, actionVal, iThrottle, iClient);
-            }
+						locoAction(th, actionKey, actionVal, iThrottle, iClient);
+					}
           }
-          heartbeat[iThrottle] = millis();
-        }
-      }
+					heartbeat[iThrottle] = millis();
+				}
+			}
       /*for(int iThrottle=0+iClient*2; iThrottle<2+iClient*2; iThrottle++){
         if(changeSpeed[iThrottle] && locoAddesses[iThrottle]!=""){
           String locoAddress = locoAddesses[iThrottle].substring(1);
@@ -215,39 +215,39 @@ void loop() {
           String response = loadResponse();
         }
       } */
-      if (heartbeatEnable[iClient]) {
-        checkHeartbeat(iClient);
-      }
-    }
-  }
+			if (heartbeatEnable[iClient]) {
+				checkHeartbeat(iClient);
+			}
+		}
+	}
 }
 
 void processDCCppResponse(String resp) {
-  if(resp=="p0" || resp=="p1") {
-    powerStatus = resp.charAt(1);
-    notifyPowerStatus();
-  }
+	if (resp=="p0" || resp=="p1") {
+		powerStatus = resp.charAt(1);
+		notifyPowerStatus();
+	}
 }
 
 void notifyPowerStatus() {
-  for(int p=0; p<MAX_CLIENTS; p++) {
-    if (alreadyConnected[p]) {
-      client[p].println("PPA"+powerStatus);
-    }
-  }
+	for (int p=0; p<MAX_CLIENTS; p++) {
+		if (alreadyConnected[p]) {
+			client[p].println("PPA"+powerStatus);
+		}
+	}
 }
 
 
 int invert(int value) {
-  return value == 0 ? 1 : 0;
+	return value == 0 ? 1 : 0;
 }
 
 void waitForDCCpp() {
-  while (Serial.available() <= 0) delay(25);
+	while (Serial.available() <= 0) delay(25);
 }
 
 void sendDCCpp(String v) {
-  if(LOG_DCC) DEBUGS("DCC<< "+v);
+	if (LOG_DCC) DEBUGS("DCC<< "+v);
 	Serial.println(v);
 }
 
@@ -256,44 +256,44 @@ void sendDCCppCmd(String v) {
 }
 
 void turnPower(char v) {
-  sendDCCppCmd(String(v));
+	sendDCCppCmd(String(v));
 }
 
 int dccReadRelayed() {
-  int v = Serial.read();
-  if(v>=0 && dccppClient) { dccppClient.write(v); }
-  return v;
+	int v = Serial.read();
+	if (v>=0 && dccppClient) { dccppClient.write(v); }
+	return v;
 }
 
 String readResponse() {
-  char resp[maxCommandLength+1];
-  char c;
-  while(Serial.available() > 0) {
-    c = dccReadRelayed();
-    if(c == '<') {
-      sprintf(resp, "");
-      while( (c = dccReadRelayed()) != '>') {
-        if(strlen(resp)<maxCommandLength)
-          sprintf(resp, "%s%c", resp, c);
-        else break;
-      }
-      if(LOG_DCC) DEBUGS("DCC>> "+String(resp) );
-      return String(resp);
-    }
-  }
-  return "";
+	char resp[maxCommandLength+1];
+	char c;
+	while(Serial.available() > 0) {
+		c = dccReadRelayed();
+		if (c == '<') {
+			sprintf(resp, "");
+			while( (c = dccReadRelayed()) != '>') {
+				if (strlen(resp)<maxCommandLength)
+					sprintf(resp, "%s%c", resp, c);
+				else break;
+			}
+			if (LOG_DCC) DEBUGS("DCC>> "+String(resp) );
+			return String(resp);
+		}
+	}
+	return "";
 }
 
 
 String loadResponse() {
-  waitForDCCpp();
-  return readResponse();
+	waitForDCCpp();
+	return readResponse();
 }
 
 void loadTurnouts() {
-  sendDCCppCmd("T");
-  waitForDCCpp();
-  int t = 0;
+	sendDCCppCmd("T");
+	waitForDCCpp();
+	int t = 0;
   while(Serial.available()>0)
   {
     char data[maxCommandLength];
@@ -317,207 +317,207 @@ void loadTurnouts() {
       if(s=="1") z=4;
       int a = (x-1)*4+y+1;
       turnoutData[t]={a,id,z};
-      t++;
-  }
+		t++;
+	}
 }
 
 void wifiPrintln(int iClient, String v) {
-  client[iClient].println(v);
-  if(LOG_WIFI) DEBUGS("WF<< "+v);
+	client[iClient].println(v);
+	if (LOG_WIFI) DEBUGS("WF<< "+v);
 }
 void wifiPrint(int iClient, String v) {
-  client[iClient].print(v);
-  if(LOG_WIFI) DEBUGS("WF<< "+v);
+	client[iClient].print(v);
+	if (LOG_WIFI) DEBUGS("WF<< "+v);
 }
 
 void throttleStart(int iClient) {
-  client[iClient].flush();
-  client[iClient].setTimeout(500);
-  DEBUGS("New client");
+	client[iClient].flush();
+	client[iClient].setTimeout(500);
+	DEBUGS("New client");
 
-  wifiPrintln(iClient, "VN2.0");
-  wifiPrintln(iClient, "RL0");
-  wifiPrintln(iClient, "PPA"+powerStatus);
-  wifiPrintln(iClient, "PTT]\\[Turnouts}|{Turnout]\\[Closed}|{2]\\[Thrown}|{4");
-  wifiPrint(iClient, "PTL");
-  for (int t = 0 ; turnoutData[t].address != 0; t++) {
+	wifiPrintln(iClient, "VN2.0");
+	wifiPrintln(iClient, "RL0");
+	wifiPrintln(iClient, "PPA"+powerStatus);
+	wifiPrintln(iClient, "PTT]\\[Turnouts}|{Turnout]\\[Closed}|{"+String(TURNOUT_CLOSED)+"]\\[Thrown}|{"+String(TURNOUT_THROWN) );
+	wifiPrint(iClient, "PTL");
+	for (int t = 0 ; turnoutData[t].address != 0; t++) {
     wifiPrint(iClient, "]\\[LT"+String(turnoutData[t].address)+"}|{"+turnoutData[t].id+"}|{"+turnoutData[t].tStatus);
   }
-  wifiPrintln(iClient, "");
-  wifiPrintln(iClient, "*"+String(heartbeatTimeout));
-  alreadyConnected[iClient] = true;
+	wifiPrintln(iClient, "");
+	wifiPrintln(iClient, "*"+String(heartbeatTimeout));
+	alreadyConnected[iClient] = true;
 }
 
 void throttleStop(int iClient) {
-  client[iClient].stop();
-  DEBUGS("Client lost");
-  alreadyConnected[iClient] = false;
-  heartbeatEnable[iClient] = false;
-  locoStates[0+iClient*2][29] = 0;   heartbeat[0+iClient*2] = 0;
-  locoStates[1+iClient*2][29] = 0;   heartbeat[1+iClient*2] = 0;
+	client[iClient].stop();
+	DEBUGS("Client lost");
+	alreadyConnected[iClient] = false;
+	heartbeatEnable[iClient] = false;
+	locoStates[0+iClient*2][29] = 0;	 heartbeat[0+iClient*2] = 0;
+	locoStates[1+iClient*2][29] = 0;	 heartbeat[1+iClient*2] = 0;
 }
 
 void locoAdd(char th, String locoAddr, int iThrottle, int iClient) {
-  locoAddesses[iThrottle] = locoAddr;
-  wifiPrintln(iClient, String("M")+th+"+"+locoAddr+"<;>");
-  for(int fKey=0; fKey<29; fKey++){
-    locoStates[iThrottle][fKey] =0;
-    wifiPrintln(iClient, String("M")+th+"A"+locoAddr+"<;>F0"+String(fKey));
-  }
-  locoStates[iThrottle][29] =0;
-  locoStates[iThrottle][30] =1;
-  wifiPrintln(iClient, String("M")+th+"A"+locoAddr+"<;>V0");
-  wifiPrintln(iClient, String("M")+th+"A"+locoAddr+"<;>R1");
-  wifiPrintln(iClient, String("M")+th+"A"+locoAddr+"<;>s1");
-  DEBUGS("loco add thr="+String(iThrottle)+"; addr"+String(locoAddr) );
+	locoAddesses[iThrottle] = locoAddr;
+	wifiPrintln(iClient, String("M")+th+"+"+locoAddr+"<;>");
+	for (int fKey=0; fKey<29; fKey++) {
+		locoStates[iThrottle][fKey] =0;
+		wifiPrintln(iClient, String("M")+th+"A"+locoAddr+"<;>F0"+String(fKey));
+	}
+	locoStates[iThrottle][29] =0;
+	locoStates[iThrottle][30] =1;
+	wifiPrintln(iClient, String("M")+th+"A"+locoAddr+"<;>V0");
+	wifiPrintln(iClient, String("M")+th+"A"+locoAddr+"<;>R1");
+	wifiPrintln(iClient, String("M")+th+"A"+locoAddr+"<;>s1");
+	DEBUGS("loco add thr="+String(iThrottle)+"; addr"+String(locoAddr) );
 }
 
 void locoRelease(char th, String locoAddr, int iThrottle, int iClient) {
-  String locoAddress = locoAddesses[iThrottle].substring(1);
-  heartbeat[iThrottle] =0;
-  locoAddesses[iThrottle] = "";
-  wifiPrintln(iClient, String("M")+th+"-"+locoAddr+"<;>");
-  DEBUGS("loco release thr="+String(iThrottle)+"; addr"+String(locoAddr) );
-  // stop now
-  sendDCCppCmd(String("t ")+String(iThrottle+1)+" "+locoAddress+" 0 "+String(locoStates[iThrottle][30]));
-  String response = loadResponse();
+	String locoAddress = locoAddesses[iThrottle].substring(1);
+	heartbeat[iThrottle] =0;
+	locoAddesses[iThrottle] = "";
+	wifiPrintln(iClient, String("M")+th+"-"+locoAddr+"<;>");
+	DEBUGS("loco release thr="+String(iThrottle)+"; addr"+String(locoAddr) );
+	// stop now
+	sendDCCppCmd(String("t ")+String(iThrottle+1)+" "+locoAddress+" 0 "+String(locoStates[iThrottle][30]));
+	String response = loadResponse();
 }
 
-void locoAction(char th, String locoAddr, String actionVal, int iThrottle, int i){
-  String response;
-  if(locoAddr == "*") {
-    locoAddr = locoAddesses[iThrottle];
-  }
-  String dccLocoAddr = locoAddr.substring(1);
-  DEBUGS("loco action thr="+String(iThrottle)+"; action="+actionVal+"; DCC"+String(dccLocoAddr) );
-  int *locoState = locoStates[iThrottle];
-  if(actionVal.startsWith("F1")) {
-    int fKey = actionVal.substring(2).toInt();
-    locoState[fKey] = invert(locoState[fKey]);
-    wifiPrintln(i, String("M")+th+"A"+locoAddr+"<;>" + "F"+String(locoState[fKey])+String(fKey));
-    byte func;
-    switch(fKey){
-      case 0:
-      case 1:
-      case 2:
-      case 3:
-      case 4:
-        func = 128
-          + locoState[1]*1
-          + locoState[2]*2
-          + locoState[3]*4
-          + locoState[4]*8
-          + locoState[0]*16;
-        sendDCCppCmd("f "+dccLocoAddr+" "+String(func));
-      break;
-      case 5:
-      case 6:
-      case 7:
-      case 8:
-        func = 176
-          + locoState[5]*1
-          + locoState[6]*2
-          + locoState[7]*4
-          + locoState[8]*8;
-        sendDCCppCmd("f "+dccLocoAddr+" "+String(func));
-      break;
-      case 9:
-      case 10:
-      case 11:
-      case 12:
-        func = 160
-         + locoState[9]*1
-         + locoState[10]*2
-         + locoState[11]*4
-         + locoState[12]*8;
-        sendDCCppCmd("f "+dccLocoAddr+" "+String(func));
-      break;
-      case 13:
-      case 14:
-      case 15:
-      case 16:
-      case 17:
-      case 18:
-      case 19:
-      case 20:
-        func = locoState[13]*1 
-          + locoState[14]*2
-          + locoState[15]*4
-          + locoState[16]*8
-          + locoState[17]*16
-          + locoState[18]*32
-          + locoState[19]*64
-          + locoState[20]*128;
-        sendDCCppCmd("f "+dccLocoAddr+" "+String(222)+" "+String(func));
-      break;
-      case 21:
-      case 22:
-      case 23:
-      case 24:
-      case 25:
-      case 26:
-      case 27:
-      case 28:
-        func = locoState[21]*1
-          + locoState[22]*2
-          + locoState[23]*4
-          + locoState[24]*8
-          + locoState[25]*16
-          + locoState[26]*32
-          + locoState[27]*64
-          + locoState[28]*128;
-        sendDCCppCmd("f "+dccLocoAddr+" "+String(223)+" "+String(func));
-      break;
-    }
-  }
-  else if(actionVal.startsWith("qV")){
-    //DEBUGS("query speed for loco "+String(dccLocoAddr) );
-    wifiPrintln(i, String("M")+th+"A"+locoAddr+"<;>" + "V"+String(locoState[29]));              
-  }
-  else if(actionVal.startsWith("V")) {
-    //DEBUGS("Sending velocity to addr "+String(dccLocoAddr) );
-    locoState[29] = actionVal.substring(1).toInt();
-    sendDCCppCmd("t "+String(iThrottle+1)+" "+dccLocoAddr+"  "+String(locoState[29])+" "+String(locoState[30]));
-    response = loadResponse();
-  }
-  else if(actionVal.startsWith("qR")){
-    //DEBUGS("query dir for loco "+String(dccLocoAddr) );
-    wifiPrintln(i, String("M")+th+"A"+locoAddr+"<;>" + "R"+String(locoState[30]));              
-  }
-  else if(actionVal.startsWith("R")) {
-    //DEBUGS("Sending dir to addr "+String(dccLocoAddr) );
-    locoState[30] = actionVal.substring(1).toInt();
-    sendDCCppCmd("t "+String(iThrottle+1)+" "+dccLocoAddr+" "+String(locoState[29])+"  "+String(locoState[30]));
-    response = loadResponse();
-  }
-  else if(actionVal.startsWith("X")){
-    locoState[29] = 0;
-    sendDCCppCmd("t "+String(iThrottle+1)+" "+dccLocoAddr+" -1 "+String(locoState[30]));
-    response = loadResponse();
-  }
-  else if(actionVal.startsWith("I")){
-    locoState[29] = 0;
-    sendDCCppCmd("t "+String(iThrottle+1)+" "+dccLocoAddr+" 0 "+String(locoState[30]));
-    response = loadResponse();
-  }
-  else if(actionVal.startsWith("Q")){
-    locoState[29] = 0;
-    sendDCCppCmd("t "+String(iThrottle+1)+" "+dccLocoAddr+" 0 "+String(locoState[30]));
-    response = loadResponse();
-  }
+void locoAction(char th, String locoAddr, String actionVal, int iThrottle, int i) {
+	String response;
+	if (locoAddr == "*") {
+		locoAddr = locoAddesses[iThrottle];
+	}
+	String dccLocoAddr = locoAddr.substring(1);
+	DEBUGS("loco action thr="+String(iThrottle)+"; action="+actionVal+"; DCC"+String(dccLocoAddr) );
+	int *locoState = locoStates[iThrottle];
+	if (actionVal.startsWith("F1")) {
+		int fKey = actionVal.substring(2).toInt();
+		locoState[fKey] = invert(locoState[fKey]);
+		wifiPrintln(i, String("M")+th+"A"+locoAddr+"<;>" + "F"+String(locoState[fKey])+String(fKey));
+		byte func;
+		switch(fKey) {
+			case 0:
+			case 1:
+			case 2:
+			case 3:
+			case 4:
+				func = 128
+					+ locoState[1]*1
+					+ locoState[2]*2
+					+ locoState[3]*4
+					+ locoState[4]*8
+					+ locoState[0]*16;
+				sendDCCppCmd("f "+dccLocoAddr+" "+String(func));
+			break;
+			case 5:
+			case 6:
+			case 7:
+			case 8:
+				func = 176
+					+ locoState[5]*1
+					+ locoState[6]*2
+					+ locoState[7]*4
+					+ locoState[8]*8;
+				sendDCCppCmd("f "+dccLocoAddr+" "+String(func));
+			break;
+			case 9:
+			case 10:
+			case 11:
+			case 12:
+				func = 160
+				 + locoState[9]*1
+				 + locoState[10]*2
+				 + locoState[11]*4
+				 + locoState[12]*8;
+				sendDCCppCmd("f "+dccLocoAddr+" "+String(func));
+			break;
+			case 13:
+			case 14:
+			case 15:
+			case 16:
+			case 17:
+			case 18:
+			case 19:
+			case 20:
+				func = locoState[13]*1 
+					+ locoState[14]*2
+					+ locoState[15]*4
+					+ locoState[16]*8
+					+ locoState[17]*16
+					+ locoState[18]*32
+					+ locoState[19]*64
+					+ locoState[20]*128;
+				sendDCCppCmd("f "+dccLocoAddr+" "+String(222)+" "+String(func));
+			break;
+			case 21:
+			case 22:
+			case 23:
+			case 24:
+			case 25:
+			case 26:
+			case 27:
+			case 28:
+				func = locoState[21]*1
+					+ locoState[22]*2
+					+ locoState[23]*4
+					+ locoState[24]*8
+					+ locoState[25]*16
+					+ locoState[26]*32
+					+ locoState[27]*64
+					+ locoState[28]*128;
+				sendDCCppCmd("f "+dccLocoAddr+" "+String(223)+" "+String(func));
+			break;
+		}
+	}
+	else if (actionVal.startsWith("qV")) {
+		//DEBUGS("query speed for loco "+String(dccLocoAddr) );
+		wifiPrintln(i, String("M")+th+"A"+locoAddr+"<;>" + "V"+String(locoState[29]));							
+	}
+	else if (actionVal.startsWith("V")) {
+		//DEBUGS("Sending velocity to addr "+String(dccLocoAddr) );
+		locoState[29] = actionVal.substring(1).toInt();
+		sendDCCppCmd("t "+String(iThrottle+1)+" "+dccLocoAddr+"	"+String(locoState[29])+" "+String(locoState[30]));
+		response = loadResponse();
+	}
+	else if (actionVal.startsWith("qR")) {
+		//DEBUGS("query dir for loco "+String(dccLocoAddr) );
+		wifiPrintln(i, String("M")+th+"A"+locoAddr+"<;>" + "R"+String(locoState[30]));							
+	}
+	else if (actionVal.startsWith("R")) {
+		//DEBUGS("Sending dir to addr "+String(dccLocoAddr) );
+		locoState[30] = actionVal.substring(1).toInt();
+		sendDCCppCmd("t "+String(iThrottle+1)+" "+dccLocoAddr+" "+String(locoState[29])+"	"+String(locoState[30]));
+		response = loadResponse();
+	}
+	else if (actionVal.startsWith("X")) {
+		locoState[29] = 0;
+		sendDCCppCmd("t "+String(iThrottle+1)+" "+dccLocoAddr+" -1 "+String(locoState[30]));
+		response = loadResponse();
+	}
+	else if (actionVal.startsWith("I")) {
+		locoState[29] = 0;
+		sendDCCppCmd("t "+String(iThrottle+1)+" "+dccLocoAddr+" 0 "+String(locoState[30]));
+		response = loadResponse();
+	}
+	else if (actionVal.startsWith("Q")) {
+		locoState[29] = 0;
+		sendDCCppCmd("t "+String(iThrottle+1)+" "+dccLocoAddr+" 0 "+String(locoState[30]));
+		response = loadResponse();
+	}
 }
 
 void checkHeartbeat(int iClient) {
-  for(int iThrottle=0; iThrottle<2; iThrottle++) {
-    int ii = iThrottle + iClient*2;
-    if(heartbeat[ii] > 0 && heartbeat[ii] + heartbeatTimeout * 1000 < millis()) {
-      // stop loco
-      //TODO: is it sent to track?
-      locoStates[ii][29] = 0;
-      heartbeat[ii] = 0;
-      wifiPrintln(iClient,  (iThrottle==0?"MTA":"MSA")+locoAddesses[ii]+"<;>" + "V0");
-    }
-  }
+	for (int iThrottle=0; iThrottle<2; iThrottle++) {
+		int ii = iThrottle + iClient*2;
+		if (heartbeat[ii] > 0 && heartbeat[ii] + heartbeatTimeout * 1000 < millis()) {
+			// stop loco
+			//TODO: is it sent to track?
+			locoStates[ii][29] = 0;
+			heartbeat[ii] = 0;
+			wifiPrintln(iClient, (iThrottle==0?"MTA":"MSA")+locoAddesses[ii]+"<;>" + "V0");
+		}
+	}
 }
 
 void accessoryToggle(int aAddr, String aStatus){
