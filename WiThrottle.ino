@@ -511,7 +511,7 @@ void accessoryToggle(int aAddr, char aStatus, bool namedTurnout) {
 		case 'C': newStat=0; break;
 	}
 
-  DEBUGS(String("turnout, addr= ")+aAddr );
+  DEBUGS(String("turnout action, addr=")+aAddr+"; named:"+namedTurnout );
 
   int wStat = 3; // unknown
   if(namedTurnout) {
@@ -525,7 +525,7 @@ void accessoryToggle(int aAddr, char aStatus, bool namedTurnout) {
   		sendDCCppCmd("T "+String(turnoutData[t].id)+" "+newStat);		
   		String response = loadResponse();
   		sscanf(response.c_str(), "%*c %*d %d", &newStat);
-  		//DEBUGS(String("parsed new status "+newStat) );
+  		//DEBUGS(String("parsed new status ")+newStat );
   		wStat = newStat==0 ? TURNOUT_CLOSED : TURNOUT_THROWN;
       turnoutData[t].tStatus = wStat;
   	}  
